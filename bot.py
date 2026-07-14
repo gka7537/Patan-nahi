@@ -4,8 +4,6 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import add_album, is_user_verified
 from render_keep_alive import keep_alive 
 
-keep_alive() 
-
 app = Client("my_bot", 
              api_id=int(os.environ.get("API_ID")), 
              api_hash=os.environ.get("API_HASH"), 
@@ -55,4 +53,7 @@ async def get_file(client, message):
         await message.reply("❌ Aap verified nahi hain. \n\nAccess ke liye yahan click karein:", 
                             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Verify Now", url=link)]]))
 
-app.run()
+if __name__ == "__main__":
+    keep_alive()
+    app.run()
+  
