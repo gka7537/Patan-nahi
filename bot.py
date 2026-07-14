@@ -1,13 +1,11 @@
 import os
-import time
+import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from database import add_file, get_file, add_user_verification, is_user_verified
+from database import add_album, get_album, add_user_verification, is_user_verified
 from utils import format_file_info
-from dotenv import load_dotenv
 
-load_dotenv()
-
+# Initialize Bot
 app = Client("my_bot", 
              api_id=os.getenv("API_ID"), 
              api_hash=os.getenv("API_HASH"), 
@@ -15,42 +13,46 @@ app = Client("my_bot",
 
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
-@app.on_message(filters.document | filters.video & filters.user(ADMIN_ID))
-async def handle_uploads(client, message):
-    # Auto-generate Link logic
-    file_id = message.document.file_id if message.document else message.video.file_id
-    file_name = message.document.file_name if message.document else "Video"
-    file_size = message.document.file_size if message.document else message.video.file_size
+@app.on_message(filters.media_group & filters.user(ADMIN_ID))
+async def handle_album(client, message):
+    # Album ki sabhi files collect karna
+    media_group = await client.get_media_group(message.chat.id, message.id)
+    files_list = []
     
-    # Database mein save karna
-    await add_file(file_id, file_name, file_size)
+    # Pehli file se Thumbnail nikalna
+    thumb = media_group[0].thumbs[0].file_id if media_group[0].thumbs else None
     
-    # Link generate karke bhejna
-    short_link = f"{os.getenv('SHORTENER_URL')}/verify?file={file_id}"
-    await message.reply(f"✅ File Saved!\nLink: {short_link}")
+    for msg in media_group:
+        files_list.append({
+            "file_id": msg.document.file_id if msg.document else msg.video.file_id,
+            "name": msg.document.file_name if msg.document else "Video",
+            "size": msg.document.file_size if msg.document else msg.video.file_size
+        })
+    
+    album_id = message.media_group_id
+    await add_album(album_id, files_list)
+    
+    # Final message with Thumbnail and Info
+    text = f"✅ **Album Uploaded!**\n\nTotal Files: {len(files_list)}\nClick below to get access."
+    await client.send_photo(message.chat.id, photo=thumb, caption=text, 
+                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Get Link", url=f"YOUR_DOMAIN/verify?id={album_id}")]]))
 
 @app.on_message(filters.command("start") & filters.private)
 async def start(client, message):
-    user_id = message.from_user.id
-    if await is_user_verified(user_id):
-        await message.reply("Welcome back! You are verified.")
+    if await is_user_verified(message.from_user.id):
+        await message.reply("Aap verified hain! Files access karein.")
     else:
-        await message.reply("Please verify via this link to access files:", 
+        await message.reply("Access ke liye pehle 24 hours ki verification poori karein:", 
                             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Verify Now", url="YOUR_SHORTENER_LINK")]]))
 
-# 1-Hour Stream Limit logic (middleware concept)
-@app.on_message(filters.command("getfile"))
-async def get_file_handler(client, message):
+@app.on_message(filters.command("get") & filters.private)
+async def send_file(client, message):
     user_id = message.from_user.id
     if not await is_user_verified(user_id):
-        return await message.reply("Verify first!")
+        return await message.reply("❌ Aapka 24 hours ka session khatam ho gaya hai ya aap verify nahi hain.")
     
-    # File send logic with 1-hour session note
-    await message.reply("Here is your file. It will be available for 1 hour.", 
-                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Open File", url="LINK")]]))
-    
-    # Yahan 1 hour ke baad link expire karne ka logic add hoga
-    print(f"User {user_id} started session at {time.time()}")
+    # File ke niche note
+    await message.reply("📄 **File Name** | **Size**\n\n_Note: Yeh file aapke liye sirf 1 ghante tak valid hai._",
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Open Video", url="YOUR_STREAMING_LINK")]]))
 
 app.run()
-
