@@ -4,6 +4,13 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import add_album, get_album, add_user_verification, is_user_verified
 from utils import format_file_info
+from render_keep_alive import keep_alive # Nayi line
+# ... baki imports ...
+
+# Bot start hone se pehle ise call karein
+keep_alive() 
+
+app.run()
 
 # Initialize Bot
 app = Client("my_bot", 
