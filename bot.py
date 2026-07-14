@@ -1,65 +1,38 @@
 import os
-import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from database import add_album, get_album, add_user_verification, is_user_verified
-from utils import format_file_info
-from render_keep_alive import keep_alive # Nayi line
-# ... baki imports ...
+from database import add_album, is_user_verified
 
-# Bot start hone se pehle ise call karein
-keep_alive() 
-
-app.run()
-
-# Initialize Bot
 app = Client("my_bot", 
-             api_id=os.getenv("API_ID"), 
-             api_hash=os.getenv("API_HASH"), 
-             bot_token=os.getenv("BOT_TOKEN"))
+             api_id=int(os.environ.get("API_ID")), 
+             api_hash=os.environ.get("API_HASH"), 
+             bot_token=os.environ.get("BOT_TOKEN"))
 
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+SHORTENER_URL = os.environ.get("SHORTENER_URL")
 
-@app.on_message(filters.media_group & filters.user(ADMIN_ID))
+@app.on_message(filters.media_group & filters.user(int(os.environ.get("ADMIN_ID"))))
 async def handle_album(client, message):
-    # Album ki sabhi files collect karna
-    media_group = await client.get_media_group(message.chat.id, message.id)
-    files_list = []
-    
-    # Pehli file se Thumbnail nikalna
-    thumb = media_group[0].thumbs[0].file_id if media_group[0].thumbs else None
-    
-    for msg in media_group:
-        files_list.append({
+    files = []
+    async for msg in client.get_media_group(message.chat.id, message.id):
+        # Thumbnail aur File Details nikalna
+        thumb = msg.document.thumbs[0].file_id if msg.document and msg.document.thumbs else None
+        files.append({
             "file_id": msg.document.file_id if msg.document else msg.video.file_id,
             "name": msg.document.file_name if msg.document else "Video",
             "size": msg.document.file_size if msg.document else msg.video.file_size
         })
     
-    album_id = message.media_group_id
-    await add_album(album_id, files_list)
-    
-    # Final message with Thumbnail and Info
-    text = f"✅ **Album Uploaded!**\n\nTotal Files: {len(files_list)}\nClick below to get access."
-    await client.send_photo(message.chat.id, photo=thumb, caption=text, 
-                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Get Link", url=f"YOUR_DOMAIN/verify?id={album_id}")]]))
+    await add_album(message.media_group_id, files)
+    link = f"{SHORTENER_URL}/verify?id={message.media_group_id}"
+    await message.reply(f"✅ Album Saved!\n[Click here to get link]({link})", disable_web_page_preview=True)
 
-@app.on_message(filters.command("start") & filters.private)
+@app.on_message(filters.command("start"))
 async def start(client, message):
     if await is_user_verified(message.from_user.id):
-        await message.reply("Aap verified hain! Files access karein.")
+        await message.reply("Aap verified hain! Files access kar sakte hain.")
     else:
-        await message.reply("Access ke liye pehle 24 hours ki verification poori karein:", 
-                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Verify Now", url="YOUR_SHORTENER_LINK")]]))
-
-@app.on_message(filters.command("get") & filters.private)
-async def send_file(client, message):
-    user_id = message.from_user.id
-    if not await is_user_verified(user_id):
-        return await message.reply("❌ Aapka 24 hours ka session khatam ho gaya hai ya aap verify nahi hain.")
-    
-    # File ke niche note
-    await message.reply("📄 **File Name** | **Size**\n\n_Note: Yeh file aapke liye sirf 1 ghante tak valid hai._",
-                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Open Video", url="YOUR_STREAMING_LINK")]]))
+        link = f"{SHORTENER_URL}/verify?user={message.from_user.id}"
+        await message.reply("Access ke liye 24-hours verification complete karein:", 
+                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Verify Now", url=link)]]))
 
 app.run()
